@@ -1,0 +1,370 @@
+import numpy as np
+from tabulate import tabulate
+import warnings
+warnings.filterwarnings('ignore')
+
+# ============================================
+# BAGIAN 1: DEFINISI FUNGSI SISTEM PERSAMAAN
+# ============================================
+def f1(x, y):
+    """Fungsi f1(x,y) = x² + xy - 10"""
+    return x**2 + x*y - 10
+
+def f2(x, y):
+    """Fungsi f2(x,y) = y + 3xy² - 57"""
+    return y + 3*x*y**2 - 57
+
+# ============================================
+# BAGIAN 2: FUNGSI ITERASI (HALAMAN 5)
+# ============================================
+def g1A(x, y):
+    """g1A: x = sqrt(10 - xy)"""
+    val = 10 - x*y
+    if val < 0:
+        return None
+    return np.sqrt(val)
+
+def g2A(x, y):
+    """g2A: y = 57 - 3xy²"""
+    return 57 - 3*x*y**2
+
+# ============================================
+# BAGIAN 3: FUNGSI ITERASI (HALAMAN 6)
+# ============================================
+def g1B(x, y):
+    """g1B: x = (10 - x²)/y"""
+    if abs(y) < 1e-10:
+        return None
+    return (10 - x**2) / y
+
+def g2B(x, y):
+    """g2B: y = (57 - y)/(3xy)"""
+    if abs(x*y) < 1e-10:
+        return None
+    return (57 - y) / (3*x*y)
+
+# ============================================
+# BAGIAN 4: METODE JACOBI
+# ============================================
+def jacobi_method(x0, y0, g1, g2, tol=1e-6, max_iter=1000):
+    """
+    Metode Jacobi untuk sistem persamaan non-linear
+    Menggunakan nilai (x_k, y_k) untuk menghitung (x_{k+1}, y_{k+1})
+    """
+    x, y = x0, y0
+    history = [[0, x, y, f1(x, y), f2(x, y), 0]]
+    
+    for k in range(1, max_iter + 1):
+        # Simpan nilai lama
+        x_old, y_old = x, y
+        
+        # Hitung nilai baru secara simultan (Jacobi)
+        x_new = g1(x_old, y_old)
+        y_new = g2(x_old, y_old)
+        
+        # Cek jika ada nilai None (tidak valid)
+        if x_new is None or y_new is None:
+            return None, history, "Divergen atau domain tidak valid"
+        
+        x, y = x_new, y_new
+        
+        # Hitung error
+        error = max(abs(x - x_old), abs(y - y_old))
+        
+        # Simpan history
+        history.append([k, x, y, f1(x, y), f2(x, y), error])
+        
+        # Cek konvergensi
+        if error < tol:
+            return (x, y), history, "Konvergen"
+        
+        # Cek divergensi
+        if abs(x) > 1e10 or abs(y) > 1e10:
+            return None, history, "Divergen (nilai terlalu besar)"
+    
+    return None, history, "Tidak konvergen dalam iterasi maksimum"
+
+# ============================================
+# BAGIAN 5: METODE SEIDEL
+# ============================================
+def seidel_method(x0, y0, g1, g2, tol=1e-6, max_iter=1000):
+    """
+    Metode Gauss-Seidel untuk sistem persamaan non-linear
+    Menggunakan nilai x_{k+1} yang baru untuk menghitung y_{k+1}
+    """
+    x, y = x0, y0
+    history = [[0, x, y, f1(x, y), f2(x, y), 0]]
+    
+    for k in range(1, max_iter + 1):
+        x_old, y_old = x, y
+        
+        # Update x terlebih dahulu (Seidel)
+        x_new = g1(x_old, y_old)
+        if x_new is None:
+            return None, history, "Divergen atau domain tidak valid"
+        
+        # Update y menggunakan x yang sudah diupdate
+        y_new = g2(x_new, y_old)
+        if y_new is None:
+            return None, history, "Divergen atau domain tidak valid"
+        
+        x, y = x_new, y_new
+        
+        # Hitung error
+        error = max(abs(x - x_old), abs(y - y_old))
+        
+        # Simpan history
+        history.append([k, x, y, f1(x, y), f2(x, y), error])
+        
+        # Cek konvergensi
+        if error < tol:
+            return (x, y), history, "Konvergen"
+        
+        # Cek divergensi
+        if abs(x) > 1e10 or abs(y) > 1e10:
+            return None, history, "Divergen (nilai terlalu besar)"
+    
+    return None, history, "Tidak konvergen dalam iterasi maksimum"
+
+# ============================================
+# BAGIAN 6: METODE NEWTON-RAPHSON
+# ============================================
+def jacobian_matrix(x, y):
+    """
+    Menghitung matriks Jacobian:
+    J = [∂f1/∂x  ∂f1/∂y]
+        [∂f2/∂x  ∂f2/∂y]
+    """
+    # Turunan f1
+    df1_dx = 2*x + y
+    df1_dy = x
+    
+    # Turunan f2
+    df2_dx = 3*y**2
+    df2_dy = 1 + 6*x*y
+    
+    return np.array([[df1_dx, df1_dy],
+                     [df2_dx, df2_dy]])
+
+def newton_raphson(x0, y0, tol=1e-6, max_iter=1000):
+    """
+    Metode Newton-Raphson untuk sistem persamaan non-linear
+    [x_{k+1}]   [x_k]       [f1(x_k, y_k)]
+    [y_{k+1}] = [y_k] - J^(-1) * [f2(x_k, y_k)]
+    """
+    x, y = x0, y0
+    history = [[0, x, y, f1(x, y), f2(x, y), 0]]
+    
+    for k in range(1, max_iter + 1):
+        # Hitung fungsi dan Jacobian
+        F = np.array([f1(x, y), f2(x, y)])
+        J = jacobian_matrix(x, y)
+        
+        # Cek determinan
+        det = np.linalg.det(J)
+        if abs(det) < 1e-10:
+            return None, history, "Jacobian singular"
+        
+        # Solve sistem linear: J * delta = -F
+        try:
+            delta = np.linalg.solve(J, -F)
+        except:
+            return None, history, "Gagal menyelesaikan sistem linear"
+        
+        # Update nilai
+        x_old, y_old = x, y
+        x += delta[0]
+        y += delta[1]
+        
+        # Hitung error
+        error = max(abs(delta[0]), abs(delta[1]))
+        
+        # Simpan history
+        history.append([k, x, y, f1(x, y), f2(x, y), error])
+        
+        # Cek konvergensi
+        if error < tol:
+            return (x, y), history, "Konvergen"
+        
+        # Cek divergensi
+        if abs(x) > 1e10 or abs(y) > 1e10:
+            return None, history, "Divergen"
+    
+    return None, history, "Tidak konvergen dalam iterasi maksimum"
+
+# ============================================
+# BAGIAN 7: METODE SECANT
+# ============================================
+def secant_method(x0, y0, tol=1e-6, max_iter=1000, h=1e-6):
+    """
+    Metode Secant untuk sistem persamaan non-linear
+    Menggunakan aproksimasi finite difference untuk turunan
+    """
+    x, y = x0, y0
+    history = [[0, x, y, f1(x, y), f2(x, y), 0]]
+    
+    for k in range(1, max_iter + 1):
+        # Aproksimasi Jacobian menggunakan finite difference
+        f_curr = np.array([f1(x, y), f2(x, y)])
+        
+        # Turunan terhadap x
+        f_x_plus = np.array([f1(x + h, y), f2(x + h, y)])
+        df_dx = (f_x_plus - f_curr) / h
+        
+        # Turunan terhadap y
+        f_y_plus = np.array([f1(x, y + h), f2(x, y + h)])
+        df_dy = (f_y_plus - f_curr) / h
+        
+        # Bentuk Jacobian
+        J_approx = np.column_stack([df_dx, df_dy])
+        
+        # Cek determinan
+        det = np.linalg.det(J_approx)
+        if abs(det) < 1e-10:
+            return None, history, "Jacobian singular"
+        
+        # Solve sistem linear
+        try:
+            delta = np.linalg.solve(J_approx, -f_curr)
+        except:
+            return None, history, "Gagal menyelesaikan sistem linear"
+        
+        # Update nilai
+        x_old, y_old = x, y
+        x += delta[0]
+        y += delta[1]
+        
+        # Hitung error
+        error = max(abs(delta[0]), abs(delta[1]))
+        
+        # Simpan history
+        history.append([k, x, y, f1(x, y), f2(x, y), error])
+        
+        # Cek konvergensi
+        if error < tol:
+            return (x, y), history, "Konvergen"
+        
+        # Cek divergensi
+        if abs(x) > 1e10 or abs(y) > 1e10:
+            return None, history, "Divergen"
+    
+    return None, history, "Tidak konvergen dalam iterasi maksimum"
+
+# ============================================
+# BAGIAN 8: FUNGSI UNTUK MENAMPILKAN HASIL
+# ============================================
+def print_results(method_name, result, history, status):
+    """Menampilkan hasil dalam format tabel"""
+    print(f"\n{'='*80}")
+    print(f"METODE: {method_name}")
+    print(f"{'='*80}")
+    
+    if result is None:
+        print(f"Status: {status}")
+        print(f"Jumlah iterasi: {len(history) - 1}")
+    else:
+        print(f"Status: {status}")
+        print(f"Solusi: x = {result[0]:.10f}, y = {result[1]:.10f}")
+        print(f"Verifikasi: f1 = {f1(result[0], result[1]):.2e}, f2 = {f2(result[0], result[1]):.2e}")
+        print(f"Jumlah iterasi: {len(history) - 1}")
+    
+    # Tampilkan 5 iterasi pertama dan terakhir
+    print("\nTabel Iterasi:")
+    headers = ["Iter", "x", "y", "f1(x,y)", "f2(x,y)", "Error"]
+    
+    if len(history) <= 10:
+        table_data = [[h[0], f"{h[1]:.10f}", f"{h[2]:.10f}", 
+                      f"{h[3]:.2e}", f"{h[4]:.2e}", f"{h[5]:.2e}"] 
+                     for h in history]
+    else:
+        table_data = [[h[0], f"{h[1]:.10f}", f"{h[2]:.10f}", 
+                      f"{h[3]:.2e}", f"{h[4]:.2e}", f"{h[5]:.2e}"] 
+                     for h in history[:5]]
+        table_data.append(["...", "...", "...", "...", "...", "..."])
+        table_data.extend([[h[0], f"{h[1]:.10f}", f"{h[2]:.10f}", 
+                           f"{h[3]:.2e}", f"{h[4]:.2e}", f"{h[5]:.2e}"] 
+                          for h in history[-3:]])
+    
+    print(tabulate(table_data, headers=headers, tablefmt="grid"))
+
+# ============================================
+# BAGIAN 9: PROGRAM UTAMA
+# ============================================
+def main():
+    # Parameter awal
+    x0, y0 = 1.5, 3.5
+    tol = 0.000001
+    nim = 71
+    nim_mod = nim % 4
+    
+    print("="*80)
+    print("PENYELESAIAN SISTEM PERSAMAAN NON-LINEAR")
+    print("="*80)
+    print(f"Sistem persamaan:")
+    print(f"  f1(x,y) = x² + xy - 10 = 0")
+    print(f"  f2(x,y) = y + 3xy² - 57 = 0")
+    print(f"\nNilai awal: x0 = {x0}, y0 = {y0}")
+    print(f"Toleransi: {tol}")
+    print(f"NIM: {nim} (mod 4 = {nim_mod})")
+    print("="*80)
+    
+    # Untuk NIM 71 (mod 4 = 3): IT Seidel g1B-g2B wajib
+    # Tapi kita jalankan semua untuk demonstrasi
+    
+    print("\n" + "="*80)
+    print("METODE YANG WAJIB UNTUK NIM 71 (NIMx mod 4 = 3):")
+    print("="*80)
+    print("1. IT Seidel dengan g1B dan g2B")
+    print("2. Newton-Raphson")
+    print("3. Secant")
+    print("\nDAN salah satu IT lainnya (demo semua untuk pembelajaran)")
+    
+    # Daftar semua metode
+    methods = [
+        ("IT Jacobi dengan g1A dan g2A", lambda: jacobi_method(x0, y0, g1A, g2A, tol)),
+        ("IT Jacobi dengan g1A dan g2B", lambda: jacobi_method(x0, y0, g1A, g2B, tol)),
+        ("IT Seidel dengan g2A dan g1B", lambda: seidel_method(x0, y0, g1B, g2A, tol)),
+        ("IT Seidel dengan g1B dan g2B ⭐ WAJIB NIM 71", lambda: seidel_method(x0, y0, g1B, g2B, tol)),
+        ("Newton-Raphson ⭐ WAJIB", lambda: newton_raphson(x0, y0, tol)),
+        ("Secant ⭐ WAJIB", lambda: secant_method(x0, y0, tol))
+    ]
+    
+    # Jalankan semua metode
+    results_summary = []
+    for name, method in methods:
+        result, history, status = method()
+        print_results(name, result, history, status)
+        
+        if result is not None:
+            results_summary.append([
+                name,
+                f"{result[0]:.10f}",
+                f"{result[1]:.10f}",
+                len(history) - 1,
+                status
+            ])
+        else:
+            results_summary.append([
+                name,
+                "N/A",
+                "N/A",
+                len(history) - 1,
+                status
+            ])
+    
+    # Ringkasan
+    print("\n" + "="*80)
+    print("RINGKASAN SEMUA METODE")
+    print("="*80)
+    headers = ["Metode", "x", "y", "Iterasi", "Status"]
+    print(tabulate(results_summary, headers=headers, tablefmt="grid"))
+    
+    print("\n" + "="*80)
+    print("ANALISIS KONVERGENSI")
+    print("="*80)
+    print("Metode yang konvergen menunjukkan solusi sistem persamaan.")
+    print("Untuk NIM 71, fokus pada metode yang ditandai ⭐ WAJIB.")
+    print("="*80)
+
+if __name__ == "__main__":
+    main()
